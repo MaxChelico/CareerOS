@@ -75,10 +75,17 @@ export async function saveJobText(form: FormData) {
   refresh();
 }
 
-export async function deleteJob(form: FormData) {
-  const docs = jobs.deleteJob(id(form));
+// Deletes a job and its uploaded files. Called directly from the board.
+export async function removeJob(jobId: number) {
+  if (!Number.isInteger(jobId) || jobId <= 0) throw new Error("Invalid job");
+  const docs = jobs.deleteJob(jobId);
   await Promise.all(docs.map((d) => removeUpload(d.stored_name)));
   refresh();
+}
+
+// The job page's delete button: delete, then go back to the board.
+export async function deleteJob(form: FormData) {
+  await removeJob(id(form));
   redirect("/");
 }
 

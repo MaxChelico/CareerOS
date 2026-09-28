@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
-import { moveJob } from "@/app/actions";
+import { moveJob, removeJob } from "@/app/actions";
 import { daysSince, formatDate } from "@/lib/dates";
 import type { JobCard } from "@/lib/jobs";
 import { FOLLOW_UP_DAYS, STAGES, type StageId } from "@/lib/stages";
@@ -21,9 +21,13 @@ export function Board({ jobs }: { jobs: JobCard[] }) {
   const [showClosed, setShowClosed] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [, startTransition] = useTransition();
-  // Cards jump to their new column immediately; the server catches up in the background.
-  const [optimisticJobs, applyMove] = useOptimistic(jobs, (current, move: { id: number; status: StageId }) =>
-    current.map((j) => (j.id === move.id ? { ...j, status: move.status } : j)),
+  // Cards move (or disappear) immediately; the server catches up in the background.
+  const [optimisticJobs, applyChange] = useOptimistic(
+    jobs,
+    (current, change: { id: number; status: StageId } | { id: number; deleted: true }) =>
+      "deleted" in change
+        ? current.filter((j) => j.id !== change.id)
+        : current.map((j) => (j.id === change.id ? { ...j, status: change.status } : j)),
   );
 
   // A small movement threshold lets a plain click open the job instead of starting a drag.
@@ -39,8 +43,16 @@ export function Board({ jobs }: { jobs: JobCard[] }) {
     const status = over?.id as StageId | undefined;
     if (!job || !status || job.status === status) return;
     startTransition(async () => {
-      applyMove({ id: job.id, status });
+      applyChange({ id: job.id, status });
       await moveJob(job.id, status);
+    });
+  }
+
+  function handleDelete(job: JobCard) {
+    if (!confirm(`Delete ${job.company} (${job.title})?\n\nIts notes, cover letter, interview prep and documents are deleted too. This can't be undone.`)) return;
+    startTransition(async () => {
+      applyChange({ id: job.id, deleted: true });
+      await removeJob(job.id);
     });
   }
 
@@ -67,6 +79,7 @@ export function Board({ jobs }: { jobs: JobCard[] }) {
               stage={stage}
               jobs={optimisticJobs.filter((j) => j.status === stage.id)}
               activeId={activeId}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -80,10 +93,12 @@ function Column({
   stage,
   jobs,
   activeId,
+  onDelete,
 }: {
   stage: (typeof STAGES)[number];
   jobs: JobCard[];
   activeId: number | null;
+  onDelete: (job: JobCard) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
@@ -101,7 +116,7 @@ function Column({
       </header>
       <div className="flex min-h-24 flex-1 flex-col gap-2">
         {jobs.map((job) => (
-          <DraggableCard key={job.id} job={job} dimmed={job.id === activeId} />
+          <DraggableCard key={job.id} job={job} dimmed={job.id === activeId} onDelete={onDelete} />
         ))}
         {jobs.length === 0 && (
           <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400">
@@ -113,11 +128,24 @@ function Column({
   );
 }
 
-function DraggableCard({ job, dimmed }: { job: JobCard; dimmed: boolean }) {
+function DraggableCard({ job, dimmed, onDelete }: { job: JobCard; dimmed: boolean; onDelete: (job: JobCard) => void }) {
   const { setNodeRef, attributes, listeners } = useDraggable({ id: job.id });
   return (
-    <div ref={setNodeRef} {...attributes} {...listeners} className={dimmed ? "opacity-40" : ""}>
+    <div ref={setNodeRef} {...attributes} {...listeners} className={`group relative ${dimmed ? "opacity-40" : ""}`}>
       <Card job={job} />
+      <button
+        type="button"
+        aria-label={`Delete ${job.company}`}
+        title="Delete job"
+        // Keep a press on this button from starting a drag.
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => onDelete(job)}
+        className="absolute top-2 right-2 hidden h-6 w-6 items-center justify-center rounded-md text-slate-400 group-hover:flex hover:bg-rose-50 hover:text-rose-600 focus-visible:flex"
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+          <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -134,7 +162,7 @@ function Card({ job, lifted = false }: { job: JobCard; lifted?: boolean }) {
         lifted ? "rotate-1 cursor-grabbing shadow-lg" : "shadow-sm"
       }`}
     >
-      <p className="text-sm font-semibold">{job.company}</p>
+      <p className="pr-6 text-sm font-semibold">{job.company}</p>
       <p className="mt-0.5 text-sm text-slate-600">{job.title}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
         <span>{cardDateLabel(job)}</span>

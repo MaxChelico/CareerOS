@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createJob, importFromUrl } from "@/app/actions";
 import { SOURCES } from "@/lib/stages";
@@ -14,6 +15,15 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
   const [status, setStatus] = useState<"saved" | "applied">("saved");
   const [importMessage, setImportMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [importing, startImport] = useTransition();
+
+  const router = useRouter();
+
+  // Leave without saving. Ask first if anything has been typed or imported.
+  function cancel() {
+    const hasInput = url.trim() !== "" || Object.values(fields).some((v) => v.trim() !== "");
+    if (hasInput && !confirm("Discard this job? Nothing you've entered will be saved.")) return;
+    router.push("/");
+  }
 
   const set = (key: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setFields((f) => ({ ...f, [key]: e.target.value }));
@@ -156,7 +166,10 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={cancel} className="btn-secondary">
+          Cancel
+        </button>
         <SubmitButton pendingText="Saving…">Save job</SubmitButton>
       </div>
     </form>
