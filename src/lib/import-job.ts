@@ -63,9 +63,15 @@ export async function importJobFromUrl(rawUrl: string): Promise<ImportResult> {
     };
   }
 
-  // No structured data: take what the page metadata offers and let the user fill in the rest.
-  const title = decodeEntities(meta(html, "og:title") ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "");
-  const description = decodeEntities(meta(html, "og:description") ?? meta(html, "description") ?? "");
+  // No structured data: use the page's title and main text, and let the user tidy up the rest.
+  const siteName = decodeEntities(meta(html, "og:site_name") ?? "").trim();
+  const title = stripSiteName(
+    decodeEntities(meta(html, "og:title") ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").trim(),
+    siteName,
+  );
+  const mainText = pageMainText(html);
+  const description =
+    mainText.length >= 200 ? mainText : decodeEntities(meta(html, "og:description") ?? meta(html, "description") ?? "");
   if (!title && !description) {
     return {
       ok: false,
@@ -76,8 +82,33 @@ export async function importJobFromUrl(rawUrl: string): Promise<ImportResult> {
   }
   return {
     ok: true,
-    job: { company: meta(html, "og:site_name") ?? "", title: title.trim(), location: "", description, source },
+    job: { company: siteName, title, location: "", description, source },
   };
+}
+
+// "Investment Banking Analyst | Agentis Capital" → "Investment Banking Analyst"
+function stripSiteName(title: string, siteName: string): string {
+  if (!siteName) return title;
+  const suffix = new RegExp(`\\s*[|\\-–—:]\\s*${siteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i");
+  return title.replace(suffix, "") || title;
+}
+
+/**
+ * The readable text of a page's main content, for sites without structured job data.
+ * Prefers the <main>/<article> landmark; otherwise the body minus headers, menus and footers.
+ */
+function pageMainText(html: string): string {
+  const cleaned = html.replace(/<(script|style|noscript|svg|template|iframe)\b[\s\S]*?<\/\1>/gi, "");
+  const landmark =
+    cleaned.match(/<main\b[\s\S]*<\/main>/i)?.[0] ??
+    cleaned.match(/<article\b[\s\S]*<\/article>/i)?.[0] ??
+    cleaned.match(/<[a-z]+[^>]*role=["']main["'][\s\S]*$/i)?.[0] ??
+    (cleaned.match(/<body\b[\s\S]*<\/body>/i)?.[0] ?? cleaned).replace(/<(header|nav|footer|aside)\b[\s\S]*?<\/\1>/gi, "");
+  return htmlToText(landmark)
+    .replace(/[​‌‍﻿]/g, "") // zero-width characters some site builders insert
+    .replace(/^[_\-–—=\s]{3,}$/gm, "") // decorative divider lines
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function get(url: URL | string, accept: string) {
@@ -264,6 +295,11 @@ function decodeEntities(s: string): string {
     .replace(/&mdash;/g, "—")
     .replace(/&hellip;/g, "…")
     .replace(/&bull;/g, "•")
+    .replace(/&larr;/g, "←")
+    .replace(/&rarr;/g, "→")
+    .replace(/&middot;/g, "·")
+    .replace(/&copy;/g, "©")
+    .replace(/&(?!amp;|lt;|gt;|quot;|apos;)[a-z]+;/gi, "") // any other named entity: drop rather than show raw
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
@@ -282,6 +318,8 @@ function htmlToText(html: string): string {
   )
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")
+    .replace(/^•\n+(?=[^\n•])/gm, "• ") // a bullet whose text sat in its own paragraph
+    .replace(/^•\s*$/gm, "") // empty bullets (e.g. list items holding only icons)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
