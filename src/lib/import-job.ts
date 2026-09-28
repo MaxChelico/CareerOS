@@ -14,7 +14,7 @@ const PASTE_HINT = "Paste the job description below instead.";
 
 /**
  * Fetch a job posting and pull out its details, in order of reliability:
- * 1. Greenhouse / Lever / Ashby postings, via those platforms' public job APIs.
+ * 1. Greenhouse / Lever / Ashby / ADP Workforce Now postings, via those platforms' public job APIs.
  * 2. A schema.org "JobPosting" JSON-LD block, which many career sites embed.
  * 3. The page's title and description metadata.
  */
@@ -157,6 +157,35 @@ async function importFromJobBoardApi(url: URL): Promise<ImportedJob | undefined>
     };
   }
 
+  // workforcenow.adp.com/.../recruitment.html?cid={client}&jobId={id}. ADP's feed has no company
+  // name field, so company is left blank for the user to fill in.
+  const cid = url.searchParams.get("cid");
+  const jobId = url.searchParams.get("jobId");
+  if (url.hostname === "workforcenow.adp.com" && cid && jobId) {
+    const params = new URLSearchParams({
+      cid,
+      ccId: url.searchParams.get("ccId") ?? "",
+      lang: url.searchParams.get("lang") ?? "en_US",
+      locale: url.searchParams.get("lang") ?? "en_US",
+    });
+    const job = await getJson(
+      `https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions/${encodeURIComponent(jobId)}?${params}`,
+    );
+    const locations = ((job.requisitionLocations ?? []) as { nameCode?: { shortName?: string } }[])
+      .map((l) => text(l.nameCode?.shortName))
+      .filter(Boolean);
+    const salary = ((job.customFieldGroup?.stringFields ?? []) as { stringValue?: string; nameCode?: { codeValue?: string } }[])
+      .find((f) => f.nameCode?.codeValue === "SalaryRange")?.stringValue;
+    const description = htmlToText(text(job.requisitionDescription));
+    return {
+      company: "",
+      title: text(job.requisitionTitle),
+      location: locations.join(" · "),
+      description: salary ? `Salary: ${salary}\n\n${description}` : description,
+      source: "Company site",
+    };
+  }
+
   return undefined;
 }
 
@@ -229,6 +258,12 @@ function decodeEntities(s: string): string {
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
     .replace(/&nbsp;/g, " ")
+    .replace(/&[lr]squo;/g, "'")
+    .replace(/&[lr]dquo;/g, '"')
+    .replace(/&ndash;/g, "–")
+    .replace(/&mdash;/g, "—")
+    .replace(/&hellip;/g, "…")
+    .replace(/&bull;/g, "•")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")

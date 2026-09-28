@@ -29,7 +29,12 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
           description: f.description || result.job.description,
           source: f.source || result.job.source,
         }));
-        setImportMessage({ ok: true, text: "Imported. Check the details below before saving." });
+        setImportMessage({
+          ok: true,
+          text: result.job.company
+            ? "Imported. Check the details below before saving."
+            : "Imported. This site doesn't provide the company name, so please type it in.",
+        });
       } else {
         setImportMessage({ ok: false, text: result.error });
       }
