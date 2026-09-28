@@ -29,9 +29,10 @@ export async function importJobFromUrl(rawUrl: string): Promise<ImportResult> {
 
   try {
     const fromApi = await importFromJobBoardApi(url);
-    if (fromApi) return { ok: true, job: fromApi };
-  } catch {
+    if (fromApi) return { ok: true, job: tidy(fromApi) };
+  } catch (err) {
     // Fall through to reading the page itself.
+    console.warn(`Job board lookup failed for ${url.hostname}:`, err);
   }
 
   const source = guessSource(url.hostname);
@@ -82,8 +83,14 @@ export async function importJobFromUrl(rawUrl: string): Promise<ImportResult> {
   }
   return {
     ok: true,
-    job: { company: siteName, title, location: "", description, source },
+    job: tidy({ company: siteName, title, location: "", description, source }),
   };
+}
+
+// Collapse stray runs of spaces in the one-line fields ("Real  Estate" → "Real Estate").
+function tidy(job: ImportedJob): ImportedJob {
+  const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+  return { ...job, company: oneLine(job.company), title: oneLine(job.title), location: oneLine(job.location) };
 }
 
 // "Investment Banking Analyst | Agentis Capital" → "Investment Banking Analyst"
@@ -142,19 +149,41 @@ function companyFromSlug(slug: string): string {
   return slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+async function importGreenhouseJob(board: string, jobId: string): Promise<ImportedJob> {
+  const job = await getJson(
+    `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${encodeURIComponent(jobId)}`,
+  );
+  return {
+    company: text(job.company_name) || companyFromSlug(board),
+    title: text(job.title),
+    location: text(job.location?.name),
+    description: htmlToText(text(job.content)),
+    source: "Company site",
+  };
+}
+
+// Greenhouse's embed page accepts a bare job ID and redirects to an address naming the board
+// (…/embed/job_app?for={board}&token={id}), which tells us which board the job belongs to.
+async function findGreenhouseBoard(jobId: string): Promise<string | undefined> {
+  const res = await get(`https://boards.greenhouse.io/embed/job_app?token=${encodeURIComponent(jobId)}`, "text/html");
+  if (!res.ok) return undefined;
+  const board = new URL(res.url).searchParams.get("for") ?? (await res.text()).match(/[?&]for=([\w-]+)/)?.[1];
+  return board || undefined;
+}
+
 async function importFromJobBoardApi(url: URL): Promise<ImportedJob | undefined> {
   const [first, second, third] = url.pathname.split("/").filter(Boolean);
 
   // job-boards.greenhouse.io/{board}/jobs/{id}
   if (/(^|\.)greenhouse\.io$/.test(url.hostname) && second === "jobs" && third) {
-    const job = await getJson(`https://boards-api.greenhouse.io/v1/boards/${first}/jobs/${third}`);
-    return {
-      company: text(job.company_name) || companyFromSlug(first),
-      title: text(job.title),
-      location: text(job.location?.name),
-      description: htmlToText(text(job.content)),
-      source: "Company site",
-    };
+    return importGreenhouseJob(first, third);
+  }
+
+  // A Greenhouse job embedded in a company's own careers page: ...?gh_jid={id}
+  const ghJobId = url.searchParams.get("gh_jid");
+  if (ghJobId && /^\d+$/.test(ghJobId)) {
+    const board = await findGreenhouseBoard(ghJobId);
+    if (board) return importGreenhouseJob(board, ghJobId);
   }
 
   // jobs.lever.co/{company}/{id}
