@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+}
+
+/* Shared form-control look. */
+@utility field {
+  @apply w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none transition
+    placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition
+    disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-slate-900 text-white hover:bg-slate-700;
+}
+
+@utility btn-secondary {
+  @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-100;
+}
+
+/* Formatting for Claude's chat replies (rendered from Markdown). */
+.chat-md {
+  & > * + * { @apply mt-2; }
+  & ul { @apply list-disc space-y-1 pl-5; }
+  & ol { @apply list-decimal space-y-1 pl-5; }
+  & strong { @apply font-semibold text-slate-900; }
+  & h1, & h2, & h3 { @apply font-semibold text-slate-900; }
+  & code { @apply rounded bg-slate-100 px-1 text-xs; }
+  & blockquote { @apply border-l-2 border-slate-200 pl-3 text-slate-600; }
+}
