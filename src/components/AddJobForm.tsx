@@ -2,11 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createJob, importFromUrl } from "@/app/actions";
+import { createJob, importFromPastedText, importFromUrl } from "@/app/actions";
+import type { ImportResult } from "@/lib/import-job";
 import { SOURCES } from "@/lib/stages";
 import { SubmitButton } from "./SubmitButton";
 
 const EMPTY = { company: "", title: "", location: "", description: "", source: "" };
+
+// An imported description shorter than this is probably a blurb, not the posting.
+const MIN_DESCRIPTION = 300;
 
 export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
   const [url, setUrl] = useState("");
@@ -15,6 +19,9 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
   const [status, setStatus] = useState<"saved" | "applied">("saved");
   const [importMessage, setImportMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [importing, startImport] = useTransition();
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [pasteImporting, startPasteImport] = useTransition();
 
   const router = useRouter();
 
@@ -28,30 +35,50 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
   const set = (key: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setFields((f) => ({ ...f, [key]: e.target.value }));
 
+  // Fill the form from an import, then say plainly what (if anything) is still missing.
+  function applyImport(result: ImportResult) {
+    if (!result.ok) {
+      setImportMessage({ ok: false, text: result.error });
+      setPasteOpen(true);
+      return;
+    }
+    const job = result.job;
+    // Replace blanks and anything a previous import filled in, but never what the user typed.
+    const keep = (key: keyof typeof EMPTY, current: string) =>
+      current && current !== lastImport[key] ? current : job[key] || current;
+    setFields((f) => ({
+      company: keep("company", f.company),
+      title: keep("title", f.title),
+      location: keep("location", f.location),
+      description: keep("description", f.description),
+      source: keep("source", f.source),
+    }));
+    setLastImport(job);
+
+    const missingDescription = job.description.trim().length < MIN_DESCRIPTION;
+    const missing = [!job.title && "the job title", missingDescription && "the full description"].filter(Boolean);
+    if (missing.length > 0) {
+      setImportMessage({
+        ok: false,
+        text: `Only partly imported: couldn't find ${missing.join(" or ")}. Use “Paste the job page” below to fill in the rest.`,
+      });
+      setPasteOpen(true);
+    } else if (!job.company) {
+      setImportMessage({ ok: true, text: "Imported. This site doesn't provide the company name, so please type it in." });
+    } else {
+      setImportMessage({ ok: true, text: "Imported. Check the details below before saving." });
+    }
+  }
+
   function handleImport() {
-    startImport(async () => {
-      const result = await importFromUrl(url);
-      if (result.ok) {
-        // Replace blanks and anything a previous import filled in, but never what the user typed.
-        const keep = (key: keyof typeof EMPTY, current: string) =>
-          current && current !== lastImport[key] ? current : result.job[key] || current;
-        setFields((f) => ({
-          company: keep("company", f.company),
-          title: keep("title", f.title),
-          location: keep("location", f.location),
-          description: keep("description", f.description),
-          source: keep("source", f.source),
-        }));
-        setLastImport(result.job);
-        setImportMessage({
-          ok: true,
-          text: result.job.company
-            ? "Imported. Check the details below before saving."
-            : "Imported. This site doesn't provide the company name, so please type it in.",
-        });
-      } else {
-        setImportMessage({ ok: false, text: result.error });
-      }
+    startImport(async () => applyImport(await importFromUrl(url)));
+  }
+
+  function handlePaste() {
+    startPasteImport(async () => {
+      const result = await importFromPastedText(pasted);
+      applyImport(result);
+      if (result.ok) setPasteOpen(false);
     });
   }
 
@@ -78,6 +105,48 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
             {importMessage.text}
           </p>
         )}
+
+        {/* Fallback for any site that can't be imported from its link, LinkedIn included. */}
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white">
+          <button
+            type="button"
+            onClick={() => setPasteOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-slate-700"
+          >
+            Paste the job page
+            <span className="text-xs font-normal text-slate-400">{pasteOpen ? "Hide" : "For sites that don't import"}</span>
+          </button>
+          {pasteOpen && (
+            <div className="space-y-2 border-t border-slate-100 p-3">
+              <p className="text-xs text-slate-500">
+                On the job posting, press <kbd className="rounded bg-slate-100 px-1">Ctrl</kbd> +{" "}
+                <kbd className="rounded bg-slate-100 px-1">A</kbd> to select everything, then{" "}
+                <kbd className="rounded bg-slate-100 px-1">Ctrl</kbd> + <kbd className="rounded bg-slate-100 px-1">C</kbd>{" "}
+                to copy it, and paste it here. Menus and other clutter are fine; they get stripped out.
+              </p>
+              <textarea
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                rows={6}
+                placeholder="Paste the copied page here"
+                className="field text-xs"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  disabled={pasted.trim().length < 100 || pasteImporting}
+                  className="btn-secondary"
+                >
+                  {pasteImporting ? "Sorting it out…" : "Fill in the form from this"}
+                </button>
+                <span className="text-xs text-slate-400">
+                  {pasteImporting ? "This usually takes 10–30 seconds." : "Runs only when you click · costs about 1–3¢"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

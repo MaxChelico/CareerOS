@@ -10,13 +10,14 @@ export type ImportedJob = {
 
 export type ImportResult = { ok: true; job: ImportedJob } | { ok: false; error: string };
 
-const PASTE_HINT = "Paste the job description below instead.";
+const PASTE_HINT = "Use “Paste the job page” below instead.";
 
 /**
  * Fetch a job posting and pull out its details, in order of reliability:
- * 1. Greenhouse / Lever / Ashby / ADP Workforce Now postings, via those platforms' public job APIs.
+ * 1. Greenhouse / Lever / Ashby / Workday / SmartRecruiters / Recruitee / ADP Workforce Now postings,
+ *    via those platforms' public job APIs.
  * 2. A schema.org "JobPosting" JSON-LD block, which many career sites embed.
- * 3. The page's title and description metadata.
+ * 3. The page's title and main text.
  */
 export async function importJobFromUrl(rawUrl: string): Promise<ImportResult> {
   let url: URL;
@@ -217,6 +218,66 @@ async function importFromJobBoardApi(url: URL): Promise<ImportedJob | undefined>
     };
   }
 
+  // {tenant}.wd5.myworkdayjobs.com/[en-US/]{site}/job/{location}/{Title_ID} (or /details/{Title_ID}).
+  // Workday's own feed takes the site and the final Title_ID part of the link.
+  const workday = /^([\w-]+)\.wd\d+\.myworkdayjobs\.com$/.exec(url.hostname);
+  if (workday) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (/^[a-z]{2}-[A-Z]{2}$/.test(parts[0] ?? "")) parts.shift(); // optional language, e.g. en-US
+    const [site, kind] = parts;
+    const posting = parts[parts.length - 1];
+    if (site && (kind === "job" || kind === "details") && posting && parts.length >= 3) {
+      const tenant = workday[1];
+      const data = await getJson(
+        `https://${url.hostname}/wday/cxs/${tenant}/${site}/job/${encodeURIComponent(posting)}`,
+      );
+      const info = data.jobPostingInfo ?? {};
+      // Workday's organization name is often a legal entity like "2100 NVIDIA USA".
+      const org = text(data.hiringOrganization?.name).replace(/^\d+\s+/, "");
+      return {
+        company: org || companyFromSlug(tenant),
+        title: text(info.title),
+        location: [text(info.location), ...((info.additionalLocations ?? []) as unknown[]).map(text)]
+          .filter(Boolean)
+          .join(" · "),
+        description: htmlToText(text(info.jobDescription)),
+        source: "Company site",
+      };
+    }
+  }
+
+  // jobs.smartrecruiters.com/{company}/{id}-{slug}
+  if (/(^|\.)smartrecruiters\.com$/.test(url.hostname) && first && /^\d+/.test(second ?? "")) {
+    const id = second.match(/^\d+/)![0];
+    const job = await getJson(`https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(first)}/postings/${id}`);
+    const sections = (job.jobAd?.sections ?? {}) as Record<string, { title?: string; text?: string }>;
+    const description = ["companyDescription", "jobDescription", "qualifications", "additionalInformation"]
+      .map((key) => sections[key])
+      .filter((s) => s?.text)
+      .map((s) => [text(s.title), htmlToText(text(s.text))].filter(Boolean).join("\n"))
+      .join("\n\n");
+    return {
+      company: text(job.company?.name) || companyFromSlug(first),
+      title: text(job.name),
+      location: text(job.location?.fullLocation) || [job.location?.city, job.location?.region].map(text).filter(Boolean).join(", "),
+      description,
+      source: "Company site",
+    };
+  }
+
+  // {company}.recruitee.com/o/{slug}
+  const recruitee = /^([\w-]+)\.recruitee\.com$/.exec(url.hostname);
+  if (recruitee && first === "o" && second) {
+    const { offer } = await getJson(`https://${url.hostname}/api/offers/${encodeURIComponent(second)}`);
+    return {
+      company: text(offer.company_name) || companyFromSlug(recruitee[1]),
+      title: text(offer.title),
+      location: text(offer.location),
+      description: [htmlToText(text(offer.description)), htmlToText(text(offer.requirements))].filter(Boolean).join("\n\n"),
+      source: "Company site",
+    };
+  }
+
   // workforcenow.adp.com/.../recruitment.html?cid={client}&jobId={id}. ADP's feed has no company
   // name field, so company is left blank for the user to fill in.
   const cid = url.searchParams.get("cid");
@@ -347,6 +408,7 @@ function htmlToText(html: string): string {
   )
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")
+    .replace(/ +([,.;:!?])/g, "$1") // "bunq , we" → "bunq, we" (left by inline tags)
     .replace(/^•\n+(?=[^\n•])/gm, "• ") // a bullet whose text sat in its own paragraph
     .replace(/^•\s*$/gm, "") // empty bullets (e.g. list items holding only icons)
     .replace(/\n{3,}/g, "\n\n")

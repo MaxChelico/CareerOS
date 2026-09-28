@@ -6,7 +6,9 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { UPLOADS_DIR } from "@/lib/db";
-import { importJobFromUrl } from "@/lib/import-job";
+import { describeError } from "@/lib/ai";
+import { extractJobFromText } from "@/lib/extract-job";
+import { importJobFromUrl, type ImportResult } from "@/lib/import-job";
 import * as jobs from "@/lib/jobs";
 import { DOCUMENT_KINDS, isStage, type StageId } from "@/lib/stages";
 
@@ -47,6 +49,16 @@ function refresh() {
 
 export async function importFromUrl(url: string) {
   return importJobFromUrl(url);
+}
+
+// The fallback for sites that can't be imported: sort a copied page into the form's fields.
+export async function importFromPastedText(pasted: string): Promise<ImportResult> {
+  if (pasted.trim().length < 100) return { ok: false, error: "Paste the whole job page first." };
+  try {
+    return { ok: true, job: await extractJobFromText(pasted) };
+  } catch (err) {
+    return { ok: false, error: describeError(err) };
+  }
 }
 
 export async function createJob(form: FormData) {
