@@ -6,6 +6,11 @@ Runs locally on your computer. Only you can open it; it isn't reachable from oth
 
 ## Running it
 
+Double-click **CareerOS** on the desktop (or `Start CareerOS.bat` in this folder). It starts the app in a
+minimized window and opens your browser. Close that window to stop CareerOS.
+
+Or from a terminal:
+
 ```bash
 npm install     # first time only
 npm run dev
