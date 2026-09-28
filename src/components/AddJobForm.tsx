@@ -10,6 +10,7 @@ const EMPTY = { company: "", title: "", location: "", description: "", source: "
 export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
   const [url, setUrl] = useState("");
   const [fields, setFields] = useState(EMPTY);
+  const [lastImport, setLastImport] = useState(EMPTY); // what the previous import filled in
   const [status, setStatus] = useState<"saved" | "applied">("saved");
   const [importMessage, setImportMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [importing, startImport] = useTransition();
@@ -21,14 +22,17 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
     startImport(async () => {
       const result = await importFromUrl(url);
       if (result.ok) {
-        // Only fill blanks, so nothing the user already typed is overwritten.
+        // Replace blanks and anything a previous import filled in, but never what the user typed.
+        const keep = (key: keyof typeof EMPTY, current: string) =>
+          current && current !== lastImport[key] ? current : result.job[key] || current;
         setFields((f) => ({
-          company: f.company || result.job.company,
-          title: f.title || result.job.title,
-          location: f.location || result.job.location,
-          description: f.description || result.job.description,
-          source: f.source || result.job.source,
+          company: keep("company", f.company),
+          title: keep("title", f.title),
+          location: keep("location", f.location),
+          description: keep("description", f.description),
+          source: keep("source", f.source),
         }));
+        setLastImport(result.job);
         setImportMessage({
           ok: true,
           text: result.job.company
