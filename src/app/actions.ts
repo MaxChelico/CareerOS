@@ -11,6 +11,7 @@ import { extractJobFromText } from "@/lib/extract-job";
 import { importJobFromUrl, type ImportResult } from "@/lib/import-job";
 import * as jobs from "@/lib/jobs";
 import { DOCUMENT_KINDS, isStage, type StageId } from "@/lib/stages";
+import { isTypeColor, type TypeColor } from "@/lib/type-colors";
 
 // CareerOS is single-user and only listens on localhost, so actions don't check auth.
 
@@ -38,7 +39,14 @@ function jobInput(form: FormData): jobs.JobInput {
     description: str(form, "description"),
     resume_version: str(form, "resume_version"),
     applied_at: str(form, "applied_at") || null,
+    type_id: typeIdFrom(form),
   };
+}
+
+// The job-type dropdown sends "" for "No type".
+function typeIdFrom(form: FormData): number | null {
+  const n = Number(str(form, "type_id"));
+  return Number.isInteger(n) && n > 0 && jobs.jobTypeExists(n) ? n : null;
 }
 
 function refresh() {
@@ -159,4 +167,39 @@ export async function deleteDocument(form: FormData) {
 
 async function removeUpload(storedName: string) {
   await fs.rm(path.join(UPLOADS_DIR, path.basename(storedName)), { force: true });
+}
+
+// ---------- Job types ----------
+
+export type TypeFormState = { error: string } | { ok: true } | null;
+
+function typeFields(form: FormData): { name: string; color: TypeColor } | { error: string } {
+  const name = str(form, "name").slice(0, 40);
+  const color = str(form, "color");
+  if (!name) return { error: "Give the type a name." };
+  if (!isTypeColor(color)) return { error: "Pick a colour." };
+  return { name, color };
+}
+
+export async function addJobType(_prev: TypeFormState, form: FormData): Promise<TypeFormState> {
+  const fields = typeFields(form);
+  if ("error" in fields) return fields;
+  if (!jobs.addJobType(fields.name, fields.color)) return { error: `There's already a type called "${fields.name}".` };
+  refresh();
+  return { ok: true };
+}
+
+export async function updateJobType(_prev: TypeFormState, form: FormData): Promise<TypeFormState> {
+  const fields = typeFields(form);
+  if ("error" in fields) return fields;
+  if (!jobs.updateJobType(id(form), fields.name, fields.color)) {
+    return { error: `There's already a type called "${fields.name}".` };
+  }
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteJobType(form: FormData) {
+  jobs.deleteJobType(id(form));
+  refresh();
 }

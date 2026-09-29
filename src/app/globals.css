@@ -38,3 +38,9 @@ body {
   & code { @apply rounded bg-slate-100 px-1 text-xs; }
   & blockquote { @apply border-l-2 border-slate-200 pl-3 text-slate-600; }
 }
+
+/* Slim scrollbars inside board columns. */
+.column-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}

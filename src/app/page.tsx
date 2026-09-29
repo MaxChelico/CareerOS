@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Board } from "@/components/Board";
-import { listJobCards } from "@/lib/jobs";
+import { listJobCards, listJobTypes } from "@/lib/jobs";
 
 export default function BoardPage() {
   const jobs = listJobCards();
@@ -19,5 +19,5 @@ export default function BoardPage() {
     );
   }
 
-  return <Board jobs={jobs} />;
+  return <Board jobs={jobs} types={listJobTypes()} />;
 }

@@ -132,3 +132,36 @@ globalForDb.careerosDb = db;
 
 // Every statement is CREATE IF NOT EXISTS, so this is safe to re-run and picks up new tables.
 db.exec(SCHEMA);
+
+// One-time upgrades to existing databases, tracked with SQLite's user_version counter.
+// Each runs once, in order; add new ones to the end and never edit old ones.
+const MIGRATIONS: ((db: Database.Database) => void)[] = [
+  // 1: job types (e.g. Aerospace, Finance) with a colour each, and a type on every job.
+  (db) => {
+    db.exec(`
+      CREATE TABLE job_types (
+        id       INTEGER PRIMARY KEY,
+        name     TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        color    TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+      );
+      ALTER TABLE jobs ADD COLUMN type_id INTEGER REFERENCES job_types(id) ON DELETE SET NULL;
+    `);
+    const insert = db.prepare("INSERT INTO job_types (name, color, position) VALUES (?, ?, ?)");
+    [
+      ["Aerospace", "blue"],
+      ["Finance", "green"],
+      ["Energy", "orange"],
+      ["Engineering", "violet"],
+      ["Tech & Data", "aqua"],
+    ].forEach(([name, color], i) => insert.run(name, color, i));
+  },
+];
+
+const version = db.pragma("user_version", { simple: true }) as number;
+MIGRATIONS.slice(version).forEach((migrate, i) => {
+  db.transaction(() => {
+    migrate(db);
+    db.pragma(`user_version = ${version + i + 1}`);
+  })();
+});

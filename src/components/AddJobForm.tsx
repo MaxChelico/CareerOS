@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createJob, importFromPastedText, importFromUrl } from "@/app/actions";
 import type { ImportResult } from "@/lib/import-job";
 import { SOURCES } from "@/lib/stages";
+import type { JobType } from "@/lib/type-colors";
+import { JobTypeSelect } from "./JobTypeBadge";
 import { SubmitButton } from "./SubmitButton";
 
 const EMPTY = { company: "", title: "", location: "", description: "", source: "" };
@@ -12,7 +15,7 @@ const EMPTY = { company: "", title: "", location: "", description: "", source: "
 // An imported description shorter than this is probably a blurb, not the posting.
 const MIN_DESCRIPTION = 300;
 
-export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
+export function AddJobForm({ resumeVersions, types }: { resumeVersions: string[]; types: JobType[] }) {
   const [url, setUrl] = useState("");
   const [fields, setFields] = useState(EMPTY);
   const [lastImport, setLastImport] = useState(EMPTY); // what the previous import filled in
@@ -177,6 +180,15 @@ export function AddJobForm({ resumeVersions }: { resumeVersions: string[] }) {
               <option key={s} value={s} />
             ))}
           </datalist>
+        </div>
+        <div>
+          <div className="flex items-baseline justify-between">
+            <Label htmlFor="type_id">Type</Label>
+            <Link href="/types" className="text-xs text-slate-500 hover:text-slate-900">
+              Edit types
+            </Link>
+          </div>
+          <JobTypeSelect types={types} />
         </div>
       </div>
 

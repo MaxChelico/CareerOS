@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteJobButton, StatusSelect } from "@/components/JobControls";
-import { getJobWorkspace, listResumeVersions } from "@/lib/jobs";
+import { JobTypeBadge } from "@/components/JobTypeBadge";
+import { getJobWorkspace, listJobTypes, listResumeVersions } from "@/lib/jobs";
 import { CoverLetterTab } from "./cover-letter-tab";
 import { InterviewTab } from "./interview-tab";
 import {
@@ -29,6 +30,8 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   if (!workspace) notFound();
   const { job, contacts, interviews, tasks, documents } = workspace;
   const interviewing = job.status === "screening" || job.status === "interview";
+  const types = listJobTypes();
+  const jobType = types.find((t) => t.id === job.type_id);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-6">
@@ -38,7 +41,10 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
 
       <div className="mt-3 flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{job.company}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">{job.company}</h1>
+            {jobType && <JobTypeBadge type={jobType} size="md" />}
+          </div>
           <p className="mt-0.5 text-slate-600">
             {job.title}
             {job.location && <span className="text-slate-400"> · {job.location}</span>}
@@ -77,7 +83,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
         <>
           <div className="grid gap-5 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">
-              <DetailsSection job={job} resumeVersions={listResumeVersions()} />
+              <DetailsSection job={job} resumeVersions={listResumeVersions()} types={types} />
               <NotesSection job={job} />
               <PostingSection job={job} />
             </div>

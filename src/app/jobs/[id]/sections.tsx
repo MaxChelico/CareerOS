@@ -9,10 +9,12 @@ import {
   updateJob,
   uploadDocument,
 } from "@/app/actions";
+import { JobTypeSelect } from "@/components/JobTypeBadge";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatDate, formatDateTime, today } from "@/lib/dates";
 import type { ChildKind, Contact, Document, Interview, Job, Task } from "@/lib/jobs";
 import { DOCUMENT_KINDS, SOURCES } from "@/lib/stages";
+import type { JobType } from "@/lib/type-colors";
 
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
@@ -53,7 +55,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 // ---------- Main column ----------
 
-export function DetailsSection({ job, resumeVersions }: { job: Job; resumeVersions: string[] }) {
+export function DetailsSection({ job, resumeVersions, types }: { job: Job; resumeVersions: string[]; types: JobType[] }) {
   return (
     <Section title="Application">
       <form action={updateJob} className="grid gap-3 sm:grid-cols-2">
@@ -74,6 +76,9 @@ export function DetailsSection({ job, resumeVersions }: { job: Job; resumeVersio
               <option key={s} value={s} />
             ))}
           </datalist>
+        </Field>
+        <Field label="Type">
+          <JobTypeSelect types={types} defaultValue={job.type_id} />
         </Field>
         <Field label="Date applied">
           <input name="applied_at" type="date" defaultValue={job.applied_at ?? ""} className="field" />
