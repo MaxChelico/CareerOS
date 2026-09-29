@@ -6,6 +6,7 @@ export type ImportedJob = {
   location: string;
   description: string;
   source: string;
+  suggestedType?: string; // a job type name, suggested when a pasted page is sorted by Claude
 };
 
 export type ImportResult = { ok: true; job: ImportedJob } | { ok: false; error: string };

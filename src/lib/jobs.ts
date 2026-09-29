@@ -123,6 +123,10 @@ export function updateJob(id: number, input: Omit<JobInput, "description">) {
 
 export type JobTextField = "notes" | "description";
 
+export function setJobType(id: number, typeId: number | null) {
+  db.prepare("UPDATE jobs SET type_id = ? WHERE id = ?").run(typeId, id);
+}
+
 export function setJobText(id: number, field: JobTextField, value: string) {
   const column = field === "notes" ? "notes" : "description";
   db.prepare(`UPDATE jobs SET ${column} = ? WHERE id = ?`).run(value, id);

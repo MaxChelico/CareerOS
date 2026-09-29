@@ -63,7 +63,7 @@ export async function importFromUrl(url: string) {
 export async function importFromPastedText(pasted: string): Promise<ImportResult> {
   if (pasted.trim().length < 100) return { ok: false, error: "Paste the whole job page first." };
   try {
-    return { ok: true, job: await extractJobFromText(pasted) };
+    return { ok: true, job: await extractJobFromText(pasted, jobs.listJobTypes().map((t) => t.name)) };
   } catch (err) {
     return { ok: false, error: describeError(err) };
   }
@@ -84,6 +84,13 @@ export async function updateJob(form: FormData) {
 export async function moveJob(jobId: number, status: StageId) {
   if (!isStage(status)) throw new Error("Invalid status");
   jobs.setJobStatus(jobId, status);
+  refresh();
+}
+
+// Set a job's type from the board (null = no type).
+export async function setJobType(jobId: number, typeId: number | null) {
+  if (typeId !== null && !jobs.jobTypeExists(typeId)) throw new Error("Unknown type");
+  jobs.setJobType(jobId, typeId);
   refresh();
 }
 

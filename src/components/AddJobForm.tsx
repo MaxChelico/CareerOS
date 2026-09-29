@@ -6,8 +6,7 @@ import { useState, useTransition } from "react";
 import { createJob, importFromPastedText, importFromUrl } from "@/app/actions";
 import type { ImportResult } from "@/lib/import-job";
 import { SOURCES } from "@/lib/stages";
-import type { JobType } from "@/lib/type-colors";
-import { JobTypeSelect } from "./JobTypeBadge";
+import { colorHex, type JobType } from "@/lib/type-colors";
 import { SubmitButton } from "./SubmitButton";
 
 const EMPTY = { company: "", title: "", location: "", description: "", source: "" };
@@ -15,7 +14,15 @@ const EMPTY = { company: "", title: "", location: "", description: "", source: "
 // An imported description shorter than this is probably a blurb, not the posting.
 const MIN_DESCRIPTION = 300;
 
-export function AddJobForm({ resumeVersions, types }: { resumeVersions: string[]; types: JobType[] }) {
+export function AddJobForm({
+  resumeVersions,
+  types,
+  defaultTypeId,
+}: {
+  resumeVersions: string[];
+  types: JobType[];
+  defaultTypeId: number | null; // pre-selected when adding from a filtered board
+}) {
   const [url, setUrl] = useState("");
   const [fields, setFields] = useState(EMPTY);
   const [lastImport, setLastImport] = useState(EMPTY); // what the previous import filled in
@@ -25,6 +32,8 @@ export function AddJobForm({ resumeVersions, types }: { resumeVersions: string[]
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasted, setPasted] = useState("");
   const [pasteImporting, startPasteImport] = useTransition();
+  const [typeId, setTypeId] = useState<number | null>(defaultTypeId);
+  const [typeSuggested, setTypeSuggested] = useState(false); // chosen by Claude, not the user
 
   const router = useRouter();
 
@@ -57,6 +66,13 @@ export function AddJobForm({ resumeVersions, types }: { resumeVersions: string[]
       source: keep("source", f.source),
     }));
     setLastImport(job);
+
+    // Take Claude's type suggestion (from a pasted page) unless the user already picked one.
+    const suggested = job.suggestedType && types.find((t) => t.name === job.suggestedType);
+    if (suggested && (typeId === null || typeSuggested)) {
+      setTypeId(suggested.id);
+      setTypeSuggested(true);
+    }
 
     const missingDescription = job.description.trim().length < MIN_DESCRIPTION;
     const missing = [!job.title && "the job title", missingDescription && "the full description"].filter(Boolean);
@@ -152,6 +168,44 @@ export function AddJobForm({ resumeVersions, types }: { resumeVersions: string[]
         </div>
       </div>
 
+      <fieldset>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <legend className="text-sm font-medium text-slate-700">Type</legend>
+          <Link href="/types" className="text-xs text-slate-500 hover:text-slate-900">
+            Edit types
+          </Link>
+        </div>
+        <input type="hidden" name="type_id" value={typeId ?? ""} />
+        <div className="flex flex-wrap gap-1.5">
+          {[...types, null].map((t) => {
+            const id = t?.id ?? null;
+            const selected = typeId === id;
+            return (
+              <button
+                key={id ?? "none"}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setTypeId(id);
+                  setTypeSuggested(false);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
+                  selected
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                }`}
+              >
+                {t && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colorHex(t.color) }} />}
+                {t ? t.name : "No type"}
+              </button>
+            );
+          })}
+        </div>
+        {typeSuggested && typeId !== null && (
+          <p className="mt-1.5 text-xs text-slate-500">Suggested from the posting. Click another type to change it.</p>
+        )}
+      </fieldset>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="company">Company *</Label>
@@ -180,15 +234,6 @@ export function AddJobForm({ resumeVersions, types }: { resumeVersions: string[]
               <option key={s} value={s} />
             ))}
           </datalist>
-        </div>
-        <div>
-          <div className="flex items-baseline justify-between">
-            <Label htmlFor="type_id">Type</Label>
-            <Link href="/types" className="text-xs text-slate-500 hover:text-slate-900">
-              Edit types
-            </Link>
-          </div>
-          <JobTypeSelect types={types} />
         </div>
       </div>
 
