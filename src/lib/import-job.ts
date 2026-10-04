@@ -44,7 +44,7 @@ export async function importJobFromUrl(rawUrl: string): Promise<ImportResult> {
   try {
     const res = await get(url, "text/html");
     if (!res.ok) {
-      return { ok: false, error: `The site responded with an error (${res.status}). ${PASTE_HINT}` };
+      return { ok: false, error: `${describeRefusal(res, url.hostname)} ${PASTE_HINT}` };
     }
     html = await res.text();
   } catch {
@@ -118,6 +118,19 @@ function pageMainText(html: string): string {
     .replace(/^[_\-–—=\s]{3,}$/gm, "") // decorative divider lines
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// Explain a refused page fetch in plain terms. Bot checks (e.g. Cloudflare's "Just a moment…"
+// page) are deliberate blocks on automated tools, so CareerOS doesn't try to get past them.
+function describeRefusal(res: Response, hostname: string): string {
+  const botCheck =
+    res.headers.get("cf-mitigated") === "challenge" ||
+    ((res.status === 403 || res.status === 429) && /cloudflare|akamai|datadome|imperva/i.test(res.headers.get("server") ?? ""));
+  if (botCheck) return `${hostname} uses a bot check that blocks automatic imports.`;
+  if (res.status === 401 || res.status === 403) return `${hostname} doesn't allow automatic imports.`;
+  if (res.status === 404) return "That page wasn't found. The posting may have been taken down.";
+  if (res.status === 429) return `${hostname} is limiting requests right now.`;
+  return `The site responded with an error (${res.status}).`;
 }
 
 function get(url: URL | string, accept: string) {
