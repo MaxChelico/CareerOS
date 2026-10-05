@@ -24,7 +24,7 @@ export type Job = {
 // The subset of a job the board needs — keeps long descriptions out of the page payload.
 export type JobCard = Pick<
   Job,
-  "id" | "company" | "title" | "location" | "status" | "applied_at" | "created_at" | "status_changed_at" | "type_id"
+  "id" | "company" | "title" | "location" | "source" | "status" | "applied_at" | "created_at" | "status_changed_at" | "type_id"
 > & { next_interview: string | null };
 
 export type Contact = { id: number; job_id: number; name: string; role: string; email: string };
@@ -49,7 +49,7 @@ export type JobInput = Pick<
 export function listJobCards(): JobCard[] {
   return db
     .prepare(
-      `SELECT j.id, j.company, j.title, j.location, j.status, j.applied_at, j.created_at, j.status_changed_at, j.type_id,
+      `SELECT j.id, j.company, j.title, j.location, j.source, j.status, j.applied_at, j.created_at, j.status_changed_at, j.type_id,
               (SELECT MIN(scheduled_at) FROM interviews i
                 WHERE i.job_id = j.id AND i.scheduled_at >= ?) AS next_interview
        FROM jobs j

@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import Link from "next/link";
-import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { moveJob, removeJob, setJobType } from "@/app/actions";
 import { daysSince, formatDate } from "@/lib/dates";
 import type { JobCard } from "@/lib/jobs";
@@ -30,6 +30,16 @@ type Change = { id: number; status: StageId } | { id: number; type_id: number | 
 // Where the type menu is open: which job, and where on screen (it floats above the scrolling columns).
 type MenuState = { jobId: number; x: number; y: number } | null;
 
+// Lowercase and strip accents, so "realis" finds "AtkinsRéalis".
+function normalize(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Drop on whatever is under the pointer, so small type chips can be hit precisely. Fall back to
 // the most-overlapped column when the pointer is between targets.
 const dropTarget: CollisionDetection = (args) => {
@@ -42,7 +52,22 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [activeId, setActiveId] = useState<number | null>(null);
   const [menu, setMenu] = useState<MenuState>(null);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
+
+  // Press "/" anywhere on the board to jump to the search box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]");
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // Cards move, change type or disappear immediately; the server catches up in the background.
   const [optimisticJobs, applyChange] = useOptimistic(jobs, (current, change: Change) =>
     "deleted" in change
@@ -54,13 +79,24 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const typeById = new Map(types.map((t) => [t.id, t]));
-  const matches = (job: JobCard) =>
+  const matchesType = (job: JobCard) =>
     filter === "all" || (filter === "untyped" ? job.type_id === null : job.type_id === filter);
-  const visibleJobs = optimisticJobs.filter(matches);
+  // Every word typed must appear somewhere in the job's details (any order).
+  const terms = normalize(query).split(" ").filter(Boolean);
+  const matchesSearch = (job: JobCard) => {
+    if (terms.length === 0) return true;
+    const typeName = typeById.get(job.type_id ?? -1)?.name ?? "";
+    const stageLabel = STAGES.find((s) => s.id === job.status)?.label ?? "";
+    const haystack = normalize([job.company, job.title, job.location, job.source, typeName, stageLabel].join(" "));
+    return terms.every((t) => haystack.includes(t));
+  };
+  const visibleJobs = optimisticJobs.filter((j) => matchesType(j) && matchesSearch(j));
   const untypedCount = optimisticJobs.filter((j) => j.type_id === null).length;
 
+  const isClosed = (job: JobCard) => STAGES.find((s) => s.id === job.status)?.closed ?? false;
   const stages = STAGES.filter((s) => showClosed || !s.closed);
-  const closedCount = visibleJobs.filter((j) => STAGES.find((s) => s.id === j.status)?.closed).length;
+  const closedCount = visibleJobs.filter(isClosed).length;
+  const shownCount = showClosed ? visibleJobs.length : visibleJobs.length - closedCount;
   const activeJob = optimisticJobs.find((j) => j.id === activeId);
   const filteredType = typeof filter === "number" ? typeById.get(filter) : undefined;
   const menuJob = menu ? optimisticJobs.find((j) => j.id === menu.jobId) : undefined;
@@ -116,6 +152,35 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
       <div className="flex h-[calc(100dvh-57px)] flex-col">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 pt-5 pb-3">
           <h1 className="text-lg font-semibold">Applications</h1>
+          <div className="relative">
+            <svg
+              viewBox="0 0 16 16"
+              className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              aria-hidden
+            >
+              <circle cx="7" cy="7" r="4.5" />
+              <path d="M10.5 10.5 14 14" />
+            </svg>
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="Search jobs  ( / )"
+              aria-label="Search jobs by company, title, location, type or source"
+              className="field w-56 py-1 pl-8"
+            />
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
               All <Count n={optimisticJobs.length} />
@@ -162,6 +227,24 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
             </button>
           </div>
         </div>
+
+        {terms.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 px-6 pb-3 text-sm text-slate-600">
+            <span>
+              {shownCount === 0 ? "No jobs match" : `${shownCount} ${shownCount === 1 ? "job matches" : "jobs match"}`}{" "}
+              <span className="font-medium text-slate-900">“{query.trim()}”</span>
+              {filteredType && ` in ${filteredType.name}`}
+            </span>
+            {!showClosed && closedCount > 0 && (
+              <button onClick={() => setShowClosed(true)} className="text-sky-700 hover:text-sky-900">
+                + {closedCount} in closed columns
+              </button>
+            )}
+            <button onClick={() => setQuery("")} className="text-slate-500 hover:text-slate-900">
+              Clear search
+            </button>
+          </div>
+        )}
 
         <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto px-6 pb-6">
           {stages.map((stage) => (
