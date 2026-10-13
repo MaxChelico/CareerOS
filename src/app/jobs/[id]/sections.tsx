@@ -99,7 +99,20 @@ export function DetailsSection({ job, resumeVersions, types }: { job: Job; resum
         </Field>
         <div className="sm:col-span-2">
           <Field label="Posting link">
-            <input name="url" type="url" defaultValue={job.url} className="field" />
+            <div className="flex gap-2">
+              <input name="url" type="url" defaultValue={job.url} className="field" />
+              {job.url && (
+                <a
+                  href={job.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open the posting in a new tab"
+                  className="btn-secondary shrink-0"
+                >
+                  Open ↗
+                </a>
+              )}
+            </div>
           </Field>
         </div>
         <div className="flex justify-end sm:col-span-2">

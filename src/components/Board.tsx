@@ -447,6 +447,23 @@ function DraggableCard({
     <div ref={setNodeRef} {...attributes} {...listeners} className={`group relative shrink-0 ${dimmed ? "opacity-40" : ""}`}>
       <Card job={job} type={type} />
       <div className="absolute top-2 right-2 hidden gap-0.5 group-hover:flex group-focus-within:flex">
+        {job.url && (
+          <a
+            href={job.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Open the ${job.company} posting in a new tab`}
+            title="Open posting"
+            // Keep a press on this link from starting a drag.
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex h-6 w-6 items-center justify-center rounded-md bg-white/80 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {/* open-in-new-tab icon */}
+              <path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M11.5 9.5v3.5a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5h3.5" />
+            </svg>
+          </a>
+        )}
         <CardButton
           label={`Set type for ${job.company}`}
           title="Set type"
@@ -518,7 +535,7 @@ function Card({ job, type, lifted = false }: { job: JobCard; type: JobType | und
         type ? "border-l-4 pl-2.5" : ""
       } ${lifted ? "rotate-1 cursor-grabbing shadow-lg" : "shadow-sm"}`}
     >
-      <p className="pr-12 text-sm font-semibold">{job.company}</p>
+      <p className="pr-20 text-sm font-semibold">{job.company}</p>
       <p className="mt-0.5 text-sm text-slate-600">{job.title}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
         {type && <JobTypeBadge type={type} />}
