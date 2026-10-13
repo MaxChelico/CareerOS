@@ -9,6 +9,7 @@ import { UPLOADS_DIR } from "@/lib/db";
 import * as profile from "@/lib/profile";
 import { isSection } from "@/lib/profile-sections";
 import { parseResume } from "@/lib/resume-import";
+import { listResumeHistory, recordResumeVersion } from "@/lib/resume-versions";
 
 function str(form: FormData, key: string): string {
   const value = form.get(key);
@@ -42,7 +43,9 @@ export async function importResume(_prev: ImportState, form: FormData): Promise<
 
   const storedName = `${randomUUID()}.pdf`;
   await fs.writeFile(path.join(UPLOADS_DIR, storedName), pdf);
+  listResumeHistory(); // makes sure the outgoing version has a snapshot before it's replaced
   const oldFile = profile.replaceResume({ filename: file.name, stored_name: storedName }, parsed.contact, parsed.items);
+  recordResumeVersion(file.name, profile.getProfile()!.resume_imported_at!);
   if (oldFile) await fs.rm(path.join(UPLOADS_DIR, path.basename(oldFile)), { force: true });
 
   refresh();

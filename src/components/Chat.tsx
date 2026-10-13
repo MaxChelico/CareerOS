@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import { clearChat } from "@/app/chat-actions";
 
-type Message = { role: "user" | "assistant"; content: string };
+// created_at is missing for messages sent in this visit; they count as "now".
+type Message = { role: "user" | "assistant"; content: string; created_at?: string };
+
+// Something that happened outside the conversation, shown as a divider at the right point in it.
+export type ChatMarker = { at: string; label: string };
 
 export function Chat({
   thread,
@@ -13,6 +17,7 @@ export function Chat({
   intro,
   placeholder,
   starters = [],
+  markers = [],
 }: {
   thread: string;
   initialMessages: Message[];
@@ -20,8 +25,14 @@ export function Chat({
   intro: string;
   placeholder: string;
   starters?: string[]; // one-click first messages shown while the chat is empty
+  markers?: ChatMarker[];
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
+
+  // Markers after `after` and up to `until` (undefined = no bound). Timestamps are ISO-style strings,
+  // so comparing them as text compares them as times.
+  const markersBetween = (after: string | undefined, until: string | undefined) =>
+    markers.filter((mk) => (after === undefined || mk.at > after) && (until === undefined || mk.at <= until));
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -93,17 +104,27 @@ export function Chat({
             ))}
           </div>
         )}
-        {messages.map((m, i) =>
-          m.role === "user" ? (
-            <div key={i} className="ml-8 rounded-lg bg-slate-900 px-3 py-2 text-sm whitespace-pre-wrap text-white">
-              {m.content}
-            </div>
-          ) : (
-            <div key={i} className="chat-md mr-4 text-sm text-slate-800">
-              {m.content ? <Markdown>{m.content}</Markdown> : <span className="text-slate-400">Thinking…</span>}
-            </div>
-          ),
-        )}
+        {messages.map((m, i) => (
+          <Fragment key={i}>
+            {/* Markers (e.g. a new resume import) that happened just before this message. */}
+            {markersBetween(messages[i - 1]?.created_at, m.created_at).map((mk) => (
+              <MarkerLine key={mk.at + mk.label} label={mk.label} />
+            ))}
+            {m.role === "user" ? (
+              <div className="ml-8 rounded-lg bg-slate-900 px-3 py-2 text-sm whitespace-pre-wrap text-white">
+                {m.content}
+              </div>
+            ) : (
+              <div className="chat-md mr-4 text-sm text-slate-800">
+                {m.content ? <Markdown>{m.content}</Markdown> : <span className="text-slate-400">Thinking…</span>}
+              </div>
+            )}
+          </Fragment>
+        ))}
+        {messages.length > 0 &&
+          markersBetween(messages.at(-1)?.created_at, undefined).map((mk) => (
+            <MarkerLine key={mk.at + mk.label} label={mk.label} />
+          ))}
       </div>
 
       <form
@@ -136,5 +157,15 @@ export function Chat({
         </div>
       </form>
     </section>
+  );
+}
+
+function MarkerLine({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 py-1 text-xs text-slate-500" role="note">
+      <span className="h-px flex-1 bg-slate-200" />
+      {label}
+      <span className="h-px flex-1 bg-slate-200" />
+    </div>
   );
 }

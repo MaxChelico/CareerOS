@@ -3,6 +3,7 @@ import { AddItemForm, ProfileItemCard } from "@/components/ProfileItem";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { SubmitButton } from "@/components/SubmitButton";
 import { listMessages } from "@/lib/chat";
+import { listResumeHistory } from "@/lib/resume-versions";
 import { formatDate } from "@/lib/dates";
 import { getProfile, listItems, type Profile, type ProfileItem } from "@/lib/profile";
 import { SECTIONS, type Section } from "@/lib/profile-sections";
@@ -51,6 +52,7 @@ export default function ProfilePage() {
           <Chat
             thread="profile"
             initialMessages={listMessages("profile")}
+            markers={listResumeHistory().map((v) => ({ at: v.imported_at, label: `📄 Resume imported: ${v.filename}` }))}
             title="Resume coach"
             intro="Ask anything about your resume and job search. The coach sees your profile and won't invent experience you don't have."
             placeholder="Ask about your resume…"

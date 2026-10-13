@@ -156,6 +156,18 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       ["Tech & Data", "aqua"],
     ].forEach(([name, color], i) => insert.run(name, color, i));
   },
+  // 2: a snapshot of the profile each time a resume is imported, so the resume coach can tell
+  // versions apart and compare the newest with the one before.
+  (db) => {
+    db.exec(`
+      CREATE TABLE resume_versions (
+        id           INTEGER PRIMARY KEY,
+        filename     TEXT NOT NULL,
+        imported_at  TEXT NOT NULL,
+        profile_text TEXT NOT NULL
+      );
+    `);
+  },
 ];
 
 const version = db.pragma("user_version", { simple: true }) as number;
