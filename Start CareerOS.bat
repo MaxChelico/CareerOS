@@ -4,6 +4,9 @@ title CareerOS
 cd /d "%~dp0"
 set URL=http://127.0.0.1:3001
 
+rem Find Node.js even if Windows hasn't picked up a fresh install yet (e.g. on a new computer).
+where npm >nul 2>nul || set "PATH=%ProgramFiles%\nodejs;%PATH%"
+
 rem Already running? Then just open it.
 powershell -NoProfile -Command "try { (New-Object Net.Sockets.TcpClient('127.0.0.1', 3001)).Close(); exit 0 } catch { exit 1 }"
 if %errorlevel%==0 (
