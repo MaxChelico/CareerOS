@@ -149,6 +149,26 @@ export function setJobStatus(id: number, status: StageId) {
   })();
 }
 
+// Undo the most recent status change, restoring the job exactly as it was and removing that change
+// from its history, so an accidental move never shows up in analytics.
+export function undoStatusChange(
+  id: number,
+  previous: Pick<Job, "status" | "applied_at" | "status_changed_at">,
+) {
+  db.transaction(() => {
+    const last = db
+      .prepare("SELECT id FROM status_events WHERE job_id = ? ORDER BY changed_at DESC, id DESC LIMIT 1")
+      .get(id) as { id: number } | undefined;
+    if (last) db.prepare("DELETE FROM status_events WHERE id = ?").run(last.id);
+    db.prepare("UPDATE jobs SET status = ?, applied_at = ?, status_changed_at = ? WHERE id = ?").run(
+      previous.status,
+      previous.applied_at,
+      previous.status_changed_at,
+      id,
+    );
+  })();
+}
+
 export function deleteJob(id: number): Document[] {
   const docs = db.prepare("SELECT * FROM documents WHERE job_id = ?").all(id) as Document[];
   db.prepare("DELETE FROM jobs WHERE id = ?").run(id);

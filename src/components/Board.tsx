@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
-import { moveJob, removeJob, setJobType } from "@/app/actions";
+import { moveJob, removeJob, setJobType, undoMoveJob } from "@/app/actions";
 import { daysSince, formatDate } from "@/lib/dates";
 import type { JobCard } from "@/lib/jobs";
 import { FOLLOW_UP_DAYS, STAGES, type StageId } from "@/lib/stages";
@@ -52,6 +52,8 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [activeId, setActiveId] = useState<number | null>(null);
   const [menu, setMenu] = useState<MenuState>(null);
+  // The last job moved to a closed stage (as it was before the move), for the "Undo" notice.
+  const [undo, setUndo] = useState<{ job: JobCard; label: string } | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
@@ -122,11 +124,25 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
     }
     const status = over.id as StageId;
     if (job.status === status) return;
+    moveTo(job, status);
+    // Closed stages are usually hidden, so confirm the move and offer a way back.
+    const closedStage = STAGES.find((s) => s.id === status && s.closed);
+    if (closedStage && !showClosed) setUndo({ job, label: closedStage.label });
+  }
+
+  function moveTo(job: JobCard, status: StageId) {
     startTransition(async () => {
       applyChange({ id: job.id, status });
       await moveJob(job.id, status);
     });
   }
+
+  // Hide the undo notice after a few seconds.
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), 6000);
+    return () => clearTimeout(timer);
+  }, [undo]);
 
   function handleDelete(job: JobCard) {
     if (!confirm(`Delete ${job.company} (${job.title})?\n\nIts notes, cover letter, interview prep and documents are deleted too. This can't be undone.`)) return;
@@ -261,6 +277,39 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
         </div>
       </div>
 
+      {/* While a card is being dragged and the closed columns are hidden, offer them as drop targets. */}
+      {activeId !== null && !showClosed && (
+        <ClosedDropBar counts={(id) => optimisticJobs.filter((j) => j.status === id).length} />
+      )}
+
+      {undo && (
+        <div
+          role="status"
+          className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-white shadow-lg"
+        >
+          <span>
+            Moved <span className="font-semibold">{undo.job.company}</span> to {undo.label}
+          </span>
+          <button
+            onClick={() => {
+              // undo.job is the card as it was before the move, so it carries the old status and dates.
+              const { id, status, applied_at, status_changed_at } = undo.job;
+              setUndo(null);
+              startTransition(async () => {
+                applyChange({ id, status });
+                await undoMoveJob(id, { status, applied_at, status_changed_at });
+              });
+            }}
+            className="font-semibold text-sky-300 hover:text-sky-200"
+          >
+            Undo
+          </button>
+          <button onClick={() => setShowClosed(true)} className="text-slate-300 hover:text-white">
+            Show closed
+          </button>
+        </div>
+      )}
+
       <DragOverlay>
         {activeJob && <Card job={activeJob} type={typeById.get(activeJob.type_id ?? -1)} lifted />}
       </DragOverlay>
@@ -275,6 +324,37 @@ export function Board({ jobs, types }: { jobs: JobCard[]; types: JobType[] }) {
         />
       )}
     </DndContext>
+  );
+}
+
+// Drop targets for the closed stages (Rejected, Ghosted, Withdrawn), shown along the bottom of the
+// window during a drag so a job can be closed without first opening the hidden columns.
+function ClosedDropBar({ counts }: { counts: (stageId: StageId) => number }) {
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-6 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
+      <p className="mb-2 text-xs font-medium text-slate-500">Drop here to close the application</p>
+      <div className="flex gap-3">
+        {STAGES.filter((s) => s.closed).map((stage) => (
+          <ClosedDropZone key={stage.id} stage={stage} count={counts(stage.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClosedDropZone({ stage, count }: { stage: (typeof STAGES)[number]; count: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex h-16 flex-1 items-center justify-center gap-2 rounded-xl border-2 border-dashed text-sm font-medium transition ${
+        isOver ? "border-sky-500 bg-sky-50 text-slate-900" : "border-slate-300 bg-slate-50 text-slate-600"
+      }`}
+    >
+      <span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`} />
+      {stage.label}
+      <span className="font-normal text-slate-400">{count}</span>
+    </div>
   );
 }
 

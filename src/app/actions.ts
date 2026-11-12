@@ -87,6 +87,16 @@ export async function moveJob(jobId: number, status: StageId) {
   refresh();
 }
 
+// The board's "Undo" after closing a job: put it back exactly as it was before the move.
+export async function undoMoveJob(
+  jobId: number,
+  previous: { status: StageId; applied_at: string | null; status_changed_at: string },
+) {
+  if (!isStage(previous.status)) throw new Error("Invalid status");
+  jobs.undoStatusChange(jobId, previous);
+  refresh();
+}
+
 // Set a job's type from the board (null = no type).
 export async function setJobType(jobId: number, typeId: number | null) {
   if (typeId !== null && !jobs.jobTypeExists(typeId)) throw new Error("Unknown type");
